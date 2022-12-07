@@ -1,84 +1,234 @@
+#include <signal.h>
+#include <unistd.h>
+#include <time.h>
+#include <sys/time.h>
+#include <errno.h>
+
 #include "led_control.h"
 
 #define PIN_LED1 18
 #define PIN_LED2 23
 
+#define ON true
+#define OFF false
+
+void timerCallback(int sig_num);
+void cleanup();
+
+enum STATUS {
+    STARTING = 1,
+    WAITING_STORAGE = 2,
+    WAITING_READY = 3,
+    PROGRAMMING = 4,
+    ERRORED_STORAGE = 5,
+    ERRORED_PROGRAMMER_FAILED = 6,
+    UNKNOWN
+};
+
+struct ledStatus {
+    enum STATUS state;
+    int led_green;
+    int led_red;
+    bool led_green_state;
+    bool led_red_state;
+} devState;
+
+
+void sleeps(int seconds){
+    struct timespec req;
+    struct timespec rem;
+    req.tv_sec = seconds;
+    req.tv_nsec = 0;
+
+    while(true){
+        int v = nanosleep(&req, &rem);
+        if(v == -1){
+            if(errno == EINTR){
+                req.tv_nsec = rem.tv_nsec;
+                req.tv_sec = rem.tv_sec;
+                continue;
+            }
+            else return;
+        }
+        else return;
+    }
+}
+
 int main() {
+    devState.state = STARTING;
 
     /* GPIO Setup */
-    int led_green = configurePin(PIN_LED1);
-    int led_red = configurePin(PIN_LED2);
+    devState.led_green = configurePin(PIN_LED1);
+    devState.led_red = configurePin(PIN_LED2);
 
-
-    sleep(5);
-
-	releasePin(led_green);
-	releasePin(led_red);
-    return 0;
-
-    if(led_green == -1 || led_red == -1){
+    if(devState.led_green == -1 || devState.led_red == -1){
+        perror("Failed to configure LED pins.");
         return 1;
     }
 
-    setPinValue(led_green, 1);
-    setPinValue(led_red, 1);
+    if(setPinValue(devState.led_green, ON))
+        devState.led_green_state = ON;
 
-    bool exit = false;
-    while(!exit) {
 
-    //wait for storage
+    if(setPinValue(devState.led_red, ON))
+        devState.led_red_state = ON;
+
+    sleep(3);
+    printf("Starting timer.\r\n");
+
+    /* Timer setup */
+    signal(SIGALRM, timerCallback);   
+
+    struct itimerval newTimer;
+    newTimer.it_value.tv_sec = 0; 
+    newTimer.it_value.tv_usec = 1000; //start timer one ms from now
+    newTimer.it_interval.tv_sec = 0;
+    newTimer.it_interval.tv_usec = 250 * 1000; //generate timer interrupts every x ms
+
+    if(setitimer(ITIMER_REAL, &newTimer, NULL) == -1){
+        perror("Failed to configure timer.");
+        cleanup();
+        return 1;
+    }
+
+    //wait for storage to exist
+    devState.state = WAITING_STORAGE;
+    sleeps(5);
+
+/*
     if(false){
         //storage bad
-        setPinValue(led_green, 0);
-        setPinValue(led_red, 1);
-        //blink red?
-        continue;
+        devState.state = ERRORED_STORAGE;
+        cleanup();
+        return 1;
     }
 
     //check storage for file
     if(false){
-        setPinValue(led_green, 0);
-        setPinValue(led_red, 1);
-        continue;
+        devState.state = ERRORED_STORAGE;
+        cleanup();
+        return 1;
     }
 
-    setPinValue(led_green, 1);
-    setPinValue(led_red, 0);
+    devState.state = WAITING_READY;
 
     //wait for button press
-//    while(true) {}
+    sleeps(2);
+    
 
-    //blink green led -> timer interrupt?
     //run openocd
-    for(int i = 0; i < 10;){
-        setPinValue(led_green, 0);
-        sleep(1);
-        setPinValue(led_green, 1);
-        sleep(2);
-    }
+    devState.state = PROGRAMMING;
+    sleeps(10);
 
-    //stop timer
-    if(true){
-        //success - solid green LED
-        setPinValue(led_green, 1);
+    bool success = true;
+    if(success){
+        devState.state = WAITING_READY;
     }
     else {
-        //failed to program - solid red LED
-        setPinValue(led_red, 1);
+        devState.state = ERRORED_PROGRAMMER_FAILED;
     }
+    sleeps(5);
+*/
+    cleanup();
+    return 0;
+}
 
+void timerCallback(int sig_num){
+    if(sig_num == SIGALRM)
+    {
+        bool green_setting;
+        bool red_setting;
+        bool flashing;
+        switch (devState.state){
+            case STARTING:
+                green_setting = ON;
+                red_setting = ON;
+                flashing = false;
+                printf("devState = STARTING\r\n");    
+                break;
+            case WAITING_STORAGE:
+                green_setting = ON;
+                red_setting = ON;
+                flashing = true;
+                printf("devState = WAITING_STORAGE\r\n");    
+                break;
+            case WAITING_READY:
+                green_setting = ON;
+                red_setting = OFF;
+                flashing = false;
+                printf("devState = WAITING_READY\r\n");
+                break;
+            case PROGRAMMING:
+                green_setting = ON;
+                red_setting = OFF;
+                flashing = true;
+                printf("devState = PROGRAMMING\r\n");
+                break;
+            case ERRORED_STORAGE:
+                green_setting = OFF;
+                red_setting = ON;
+                flashing = true;
+                printf("devState = ERRORED_STORAGE\r\n");
+                break;
+            case ERRORED_PROGRAMMER_FAILED:
+                green_setting = OFF;
+                red_setting = ON;
+                flashing = false;
+                printf("devState = ERRORED_PROGRAMMER_FAILED\r\n");
+                break;
+        }
 
-    exit = true;
+        printf("G: %d R: %d F: %d\r\n", green_setting, red_setting, flashing);
+
+        if(flashing){
+            if(green_setting){
+                //invert current value of green led
+                if(setPinValue(devState.led_green, !devState.led_green_state))
+                    devState.led_green_state = !devState.led_green_state;
+            }
+            else {
+                if(devState.led_green_state && setPinValue(devState.led_green, 0)){
+                    devState.led_green_state = false;
+                }
+            }
+
+            if(red_setting){
+                //invert current value of red led
+                if(setPinValue(devState.led_red, !devState.led_red_state))
+                    devState.led_red_state = !devState.led_red_state;
+            }
+            else {
+                if(devState.led_red_state && setPinValue(devState.led_red, 0)){
+                    devState.led_red_state = false;
+                }
+            }
+        }
+        else {
+            if(devState.led_green_state != green_setting && setPinValue(devState.led_green, green_setting)){
+                devState.led_green_state = green_setting;
+            }
+            if(devState.led_red_state != red_setting && setPinValue(devState.led_red, red_setting)){
+                devState.led_red_state = red_setting;
+            }
+        }
+
     }
-    sleep(5);
+}
 
-    setPinValue(led_green, 0);
-    setPinValue(led_red, 0);
+void cleanup(){
+    //stop timer
+    struct itimerval newTimer;
+    newTimer.it_value.tv_sec = 0; 
+    newTimer.it_value.tv_usec = 0;
+    newTimer.it_interval.tv_sec = 0;
+    newTimer.it_interval.tv_usec = 0;
 
+    if(setitimer(ITIMER_REAL, &newTimer, NULL) == -1){
+        perror("Failed to configure timer.");
+    }
     /* GPIO clean up */
-    close(led_green);
-    close(led_red);
+    close(devState.led_green);
+    close(devState.led_red);
     releasePin(PIN_LED1);
     releasePin(PIN_LED2);
-    return 0;
 }

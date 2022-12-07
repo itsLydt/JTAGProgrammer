@@ -7,9 +7,10 @@
 #include "led_control.h"
 
 bool setPinValue(int pin_fd, bool value){
-	int len = snprintf(NULL, 0, "%d", value);
+	int valueInt = value? 1 : 0;
+	int len = snprintf(NULL, 0, "%d", valueInt);
 	char* valueStr = malloc(len + 1);
-	snprintf(valueStr, len + 1, "%d", value);
+	snprintf(valueStr, len + 1, "%d", valueInt);
 	printf("Setting pin to %s\r\n", valueStr);
 	int bWritten = write(pin_fd, valueStr, len);
 	if (bWritten != len) {
@@ -78,7 +79,6 @@ int configurePin(int pinNo) {
 		printf("Failed to access pin\r\n");
 		return -1;
 	}
-	write(fd, "1", 1);
 	return fd;
 }
 
