@@ -5,6 +5,7 @@
 #include <errno.h>
 
 #include "led_control.h"
+#include "file_utilities.h"
 
 #define PIN_LED1 18
 #define PIN_LED2 23
@@ -12,6 +13,7 @@
 #define ON true
 #define OFF false
 
+bool flash(char* filename);
 void timerCallback(int sig_num);
 void cleanup();
 
@@ -95,7 +97,6 @@ int main() {
     devState.state = WAITING_STORAGE;
     sleeps(5);
 
-/*
     if(false){
         //storage bad
         devState.state = ERRORED_STORAGE;
@@ -104,6 +105,8 @@ int main() {
     }
 
     //check storage for file
+
+    char* filename = "~/test.hex";
     if(false){
         devState.state = ERRORED_STORAGE;
         cleanup();
@@ -117,10 +120,8 @@ int main() {
     
 
     //run openocd
-    devState.state = PROGRAMMING;
-    sleeps(10);
 
-    bool success = true;
+    bool success = flash(filename);
     if(success){
         devState.state = WAITING_READY;
     }
@@ -128,9 +129,21 @@ int main() {
         devState.state = ERRORED_PROGRAMMER_FAILED;
     }
     sleeps(5);
-*/
+
     cleanup();
     return 0;
+}
+
+bool flash(char* filename){
+    devState.state = PROGRAMMING;
+    char* commandTemplate = "openocd -f ../openocd.cfg -c \"program %s verify reset exit\"";
+    int len = snprintf(NULL, 0, commandTemplate, filename);
+	char* commandStr = malloc(len + 1);
+	snprintf(commandStr, len + 1, commandTemplate, filename);
+    printf("Starting: %s\r\n", commandStr);
+    int retCode = system(commandStr);
+    free(commandStr);
+    return retCode == 0;
 }
 
 void timerCallback(int sig_num){
@@ -178,7 +191,7 @@ void timerCallback(int sig_num){
                 break;
         }
 
-        printf("G: %d R: %d F: %d\r\n", green_setting, red_setting, flashing);
+        //printf("G: %d R: %d F: %d\r\n", green_setting, red_setting, flashing);
 
         if(flashing){
             if(green_setting){
@@ -226,6 +239,10 @@ void cleanup(){
     if(setitimer(ITIMER_REAL, &newTimer, NULL) == -1){
         perror("Failed to configure timer.");
     }
+
+    setPinValue(devState.led_green, OFF);
+    setPinValue(devState.led_red, OFF);
+
     /* GPIO clean up */
     close(devState.led_green);
     close(devState.led_red);
