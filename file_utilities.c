@@ -15,3 +15,13 @@ bool dirExists(char* dirName){
         return false;
     }
 }
+
+int getFileList(char* pattern, glob_t* pglob){
+    glob(pattern, GLOB_ERR, NULL, pglob);      
+
+    printf("Found %d matches\n", pglob->gl_pathc);
+    if(pglob->gl_pathc > 0)
+        printf("First match: %s\n", pglob->gl_pathv[0]);
+
+    return pglob->gl_pathc;
+}
