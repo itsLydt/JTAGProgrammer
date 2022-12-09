@@ -3,6 +3,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <errno.h>
+#include <glob.h>
 
 #include "led_control.h"
 #include "file_utilities.h"
@@ -95,7 +96,13 @@ int main() {
 
     //wait for storage to exist
     devState.state = WAITING_STORAGE;
-    sleeps(5);
+    
+    while(true){
+        if(dirExists("/media/usb0")){
+            printf("Target directory exists.\r\n");
+            break;
+        }
+    }
 
     if(false){
         //storage bad
@@ -106,12 +113,26 @@ int main() {
 
     //check storage for file
 
-    char* filename = "~/test.hex";
-    if(false){
+    char* filePattern = "/media/usb0/*.hex";
+    glob_t glob;
+    int matches = getFileList(filePattern, &glob);
+    char* hexFile = NULL;
+    if(matches > 0){
+        int len = snprintf(NULL, 0, "%s", glob.gl_pathv[0]);
+        hexFile = malloc(len + 1);
+        snprintf(hexFile, len + 1, "%s", glob.gl_pathv[0]);
+        printf("%s\n", hexFile);
+        globfree(&glob);
+    }
+    else {
+        globfree(&glob);
         devState.state = ERRORED_STORAGE;
+        sleeps(2);
         cleanup();
         return 1;
     }
+
+
 
     devState.state = WAITING_READY;
 
@@ -121,7 +142,8 @@ int main() {
 
     //run openocd
 
-    bool success = flash(filename);
+    bool success = flash(hexFile);
+    free(hexFile);
     if(success){
         devState.state = WAITING_READY;
     }
