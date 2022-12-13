@@ -11,11 +11,13 @@ int main(){
 	}
 	
 	int bWritten = write(fd, "23", 2); //unexport pin 18
+    bWritten += write(fd, "18", 2); //unexport pin 
 
-        bWritten = write(fd, "18", 2); //unexport pin 18
+	bWritten += write(fd, "24", 2); //unexport pin 
 
-	if(bWritten != 2){
-		printf("Failed to unexport GPIO pin.\r\n");
+
+	if(bWritten != 6){
+		printf("Failed to unexport GPIO pins.\r\n");
 		return 1;
 	}
 
