@@ -1,10 +1,4 @@
-#include <fcntl.h> 
-#include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-
-#include "led_control.h"
+#include "gpio_control.h"
 
 bool setPinValue(int pin_fd, bool value){
 	int valueInt = value? 1 : 0;
@@ -20,7 +14,28 @@ bool setPinValue(int pin_fd, bool value){
 	return true;
 }
 
-int configurePin(int pinNo) {
+bool readPinValue(int pin_fd){
+	//seek to beginning of file
+	int offset = lseek(pin_fd, 0, SEEK_SET);
+	if(offset == -1){
+		printf("Failed to read pin value\r\n");
+		return false;
+	}
+	char buffer[2];
+	//read the IO
+	int bytesRead = read(pin_fd, &buffer, 1);
+	if(bytesRead == -1){
+		printf("Failed to read pin value file\r\n");
+		return false;
+	}
+	else {
+		printf("Pin value was: %c\r\n", buffer[0]);
+		return buffer[0] == '1';
+	}
+}
+
+
+int configurePin(int pinNo, bool direction) {
 	//TODO: check if already exported
 
 	//export GPIO pin
@@ -42,44 +57,72 @@ int configurePin(int pinNo) {
 		return -1;
 	}
 	
-	//set pin to be an output pin
+	//open direction file
 	len = snprintf(NULL, 0, "/sys/class/gpio/gpio%s/direction", pinStr);
 	char* filePath = malloc(len + 1);
 	snprintf(filePath, len + 1, "/sys/class/gpio/gpio%s/direction", pinStr);
 
 	fd = open(filePath, O_WRONLY);
 	free(filePath);
-
 	if(fd == -1){
 		printf("Failed to access gpio pin direction file\r\n");
 		free(pinStr);
 		return -1;
 	}
 
-	bWritten = write(fd, "out", 3);
-	close(fd);
+	if(direction){
+		//set pin to be an output pin
 
-	if(bWritten != 3){
-		printf("Failed to set pin direction.\r\n");
+		bWritten = write(fd, "out", 3);
+		close(fd);
+
+		if(bWritten != 3){
+			printf("Failed to set pin direction.\r\n");
+			free(pinStr);
+			return -1;
+		}
+		//open pin for writing
+
+		len = snprintf(NULL, 0, "/sys/class/gpio/gpio%s/value", pinStr);
+		filePath = malloc(len + 1);
+		snprintf(filePath, len + 1, "/sys/class/gpio/gpio%s/value", pinStr);
+		fd = open(filePath, O_WRONLY);
+
 		free(pinStr);
-		return -1;
+		free(filePath);
+
+		if(fd == -1){
+			printf("Failed to access pin\r\n");
+			return -1;
+		}
+		return fd;
 	}
+	else {
+		//set pin to be an input pin
+		bWritten = write(fd, "in", 2);
+		close(fd);
 
-	//open pin for writing
+		if(bWritten != 2){
+			printf("Failed to set pin direction.\r\n");
+			free(pinStr);
+			return -1;
+		}
 
-	len = snprintf(NULL, 0, "/sys/class/gpio/gpio%s/value", pinStr);
-	filePath = malloc(len + 1);
-	snprintf(filePath, len + 1, "/sys/class/gpio/gpio%s/value", pinStr);
-    fd = open(filePath, O_WRONLY);
+		//open pin for reading
+		len = snprintf(NULL, 0, "/sys/class/gpio/gpio%s/value", pinStr);
+		filePath = malloc(len + 1);
+		snprintf(filePath, len + 1, "/sys/class/gpio/gpio%s/value", pinStr);
+		fd = open(filePath, O_RDONLY);
 
-	free(pinStr);
-	free(filePath);
+		free(pinStr);
+		free(filePath);
 
-	if(fd == -1){
-		printf("Failed to access pin\r\n");
-		return -1;
+		if(fd == -1){
+			printf("Failed to access pin\r\n");
+			return -1;
+		}
+		return fd;
 	}
-	return fd;
 }
 
 int releasePin(int pinNo){

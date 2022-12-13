@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-int configurePin(int pinNo);
+int configurePin(int pinNo, bool direction);
 int releasePin(int pinNo);
 bool setPinValue(int pin_fd, bool value);
+bool readPinValue(int pin_fd);
