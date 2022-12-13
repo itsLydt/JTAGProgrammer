@@ -97,72 +97,84 @@ int main() {
         return 1;
     }
 
-    //wait for storage to exist
-    devState.state = WAITING_STORAGE;
+    sleeps(1);
 
-    while(true){
-        if(dirExists("/media/usb0")){
-            printf("Target directory exists.\r\n");
-            break;
-        }
-    }
-    
-    char* hexFile = NULL;
+    while (true){
+        //wait for storage to exist
+        devState.state = WAITING_STORAGE;
 
-    while(true){
-        if(!dirExists("/media/usb0")){
-            printf("Target directory disappeared.\r\n");
-            devState.state = ERRORED_STORAGE;
-            sleeps(2);
-        }
-        else {
-            if(devState.state == ERRORED_STORAGE){
+        while(true){
+            if(dirExists("/media/usb0")){
                 printf("Target directory exists.\r\n");
-                devState.state = WAITING_STORAGE;
-            }
-        }
-
-        if(devState.state == WAITING_STORAGE) {
-            //check storage for file
-            char* filePattern = "/media/usb0/*.hex";
-            glob_t glob;
-            int matches = getFileList(filePattern, &glob);
-            if(matches > 0){
-                int len = snprintf(NULL, 0, "%s", glob.gl_pathv[0]);
-                hexFile = malloc(len + 1);
-                snprintf(hexFile, len + 1, "%s", glob.gl_pathv[0]);
-                printf("%s\n", hexFile);
-                globfree(&glob);
                 break;
             }
-            else {
-                globfree(&glob);
+        }
+        
+        char* hexFile = NULL;
+
+        while(true){
+            if(!dirExists("/media/usb0")){
+                printf("Target directory disappeared.\r\n");
+                devState.state = ERRORED_STORAGE;
                 sleeps(2);
             }
+            else {
+                if(devState.state == ERRORED_STORAGE){
+                    printf("Target directory exists.\r\n");
+                    devState.state = WAITING_STORAGE;
+                }
+            }
+
+            if(devState.state == WAITING_STORAGE) {
+                //check storage for file
+                char* filePattern = "/media/usb0/*.hex";
+                glob_t glob;
+                int matches = getFileList(filePattern, &glob);
+                if(matches > 0){
+                    int len = snprintf(NULL, 0, "%s", glob.gl_pathv[0]);
+                    hexFile = malloc(len + 1);
+                    snprintf(hexFile, len + 1, "%s", glob.gl_pathv[0]);
+                    printf("%s\n", hexFile);
+                    globfree(&glob);
+                    break;
+                }
+                else {
+                    globfree(&glob);
+                    sleeps(2);
+                }
+            }
         }
-    }
 
-    devState.state = WAITING_READY;
-
-    //wait for button press
-    
-    //pin is active low
-    bool pinValue = true;
-    while(pinValue){
-        pinValue = readPinValue(devState.button_fd); 
-    }
-
-    //run openocd
-
-    bool success = flash(hexFile);
-    free(hexFile);
-    if(success){
         devState.state = WAITING_READY;
+
+        //wait for button press
+        
+        //pin is active low
+        bool pinValue = true;
+        while(pinValue){
+            pinValue = readPinValue(devState.button_fd); 
+        }
+
+        //run openocd
+
+        bool success = flash(hexFile);
+        free(hexFile);
+        if(success){
+            devState.state = WAITING_READY;
+        }
+        else {
+            devState.state = ERRORED_PROGRAMMER_FAILED;
+        }
+    
+        //wait for user to confirm next job
+        bool pinValue = true;
+        while(pinValue){
+            pinValue = readPinValue(devState.button_fd); 
+        }
+        printf("Getting ready for next job\r\n");
+        devState.state = STARTING;
+        sleeps(1);
     }
-    else {
-        devState.state = ERRORED_PROGRAMMER_FAILED;
-    }
-    sleeps(5);
 
     cleanup();
     return 0;
