@@ -5,11 +5,12 @@
 #include <errno.h>
 #include <glob.h>
 
-#include "led_control.h"
+#include "gpio_control.h"
 #include "file_utilities.h"
 
 #define PIN_LED1 18
 #define PIN_LED2 23
+#define PIN_BUTTON 24
 
 #define ON true
 #define OFF false
@@ -32,6 +33,7 @@ struct ledStatus {
     enum STATUS state;
     int led_green;
     int led_red;
+    int button_fd;
     bool led_green_state;
     bool led_red_state;
 } devState;
@@ -61,8 +63,9 @@ int main() {
     devState.state = STARTING;
 
     /* GPIO Setup */
-    devState.led_green = configurePin(PIN_LED1);
-    devState.led_red = configurePin(PIN_LED2);
+    devState.led_green = configurePin(PIN_LED1, true);
+    devState.led_red = configurePin(PIN_LED2, true);
+    devState.button_fd = configurePin(PIN_BUTTON, false);
 
     if(devState.led_green == -1 || devState.led_red == -1){
         perror("Failed to configure LED pins.");
@@ -96,49 +99,58 @@ int main() {
 
     //wait for storage to exist
     devState.state = WAITING_STORAGE;
-    
+
     while(true){
         if(dirExists("/media/usb0")){
             printf("Target directory exists.\r\n");
             break;
         }
     }
-
-    if(false){
-        //storage bad
-        devState.state = ERRORED_STORAGE;
-        cleanup();
-        return 1;
-    }
-
-    //check storage for file
-
-    char* filePattern = "/media/usb0/*.hex";
-    glob_t glob;
-    int matches = getFileList(filePattern, &glob);
+    
     char* hexFile = NULL;
-    if(matches > 0){
-        int len = snprintf(NULL, 0, "%s", glob.gl_pathv[0]);
-        hexFile = malloc(len + 1);
-        snprintf(hexFile, len + 1, "%s", glob.gl_pathv[0]);
-        printf("%s\n", hexFile);
-        globfree(&glob);
-    }
-    else {
-        globfree(&glob);
-        devState.state = ERRORED_STORAGE;
-        sleeps(2);
-        cleanup();
-        return 1;
-    }
 
+    while(true){
+        if(!dirExists("/media/usb0")){
+            printf("Target directory disappeared.\r\n");
+            devState.state = ERRORED_STORAGE;
+            sleeps(2);
+        }
+        else {
+            if(devState.state == ERRORED_STORAGE){
+                printf("Target directory exists.\r\n");
+                devState.state = WAITING_STORAGE;
+            }
+        }
 
+        if(devState.state == WAITING_STORAGE) {
+            //check storage for file
+            char* filePattern = "/media/usb0/*.hex";
+            glob_t glob;
+            int matches = getFileList(filePattern, &glob);
+            if(matches > 0){
+                int len = snprintf(NULL, 0, "%s", glob.gl_pathv[0]);
+                hexFile = malloc(len + 1);
+                snprintf(hexFile, len + 1, "%s", glob.gl_pathv[0]);
+                printf("%s\n", hexFile);
+                globfree(&glob);
+                break;
+            }
+            else {
+                globfree(&glob);
+                sleeps(2);
+            }
+        }
+    }
 
     devState.state = WAITING_READY;
 
     //wait for button press
-    sleeps(2);
     
+    //pin is active low
+    bool pinValue = true;
+    while(pinValue){
+        pinValue = readPinValue(devState.button_fd); 
+    }
 
     //run openocd
 
@@ -268,6 +280,9 @@ void cleanup(){
     /* GPIO clean up */
     close(devState.led_green);
     close(devState.led_red);
+    close(devState.button_fd);
     releasePin(PIN_LED1);
     releasePin(PIN_LED2);
+    releasePin(PIN_BUTTON);
+
 }
