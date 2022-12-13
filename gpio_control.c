@@ -29,7 +29,7 @@ bool readPinValue(int pin_fd){
 		return false;
 	}
 	else {
-		printf("Pin value was: %c\r\n", buffer[0]);
+		//printf("Pin value was: %c\r\n", buffer[0]);
 		return buffer[0] == '1';
 	}
 }
