@@ -3,4 +3,4 @@ CFLAGS=-I.
 
 
 JTAG: main.c gpio_control.c file_utilities.c
-	$(CC) -o JTAG main.c gpio_control.c file_utilities.c -I.
+	$(CC) -o JTAGProgrammer main.c gpio_control.c file_utilities.c -I.
