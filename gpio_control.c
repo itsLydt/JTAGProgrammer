@@ -52,9 +52,7 @@ int configurePin(int pinNo, bool direction) {
 	close(fd);
 
 	if(bWritten != len){
-		printf("Failed to export GPIO pin.\r\n");
-		free(pinStr);
-		return -1;
+		printf("Failed to export GPIO pin; assuming already exported.\r\n");
 	}
 	
 	//open direction file
