@@ -167,7 +167,7 @@ int main() {
         }
     
         //wait for user to confirm next job
-        bool pinValue = true;
+        pinValue = true;
         while(pinValue){
             pinValue = readPinValue(devState.button_fd); 
         }
@@ -182,7 +182,7 @@ int main() {
 
 bool flash(char* filename){
     devState.state = PROGRAMMING;
-    char* commandTemplate = "openocd -f ../openocd.cfg -c \"program %s verify reset exit\"";
+    char* commandTemplate = "openocd -f /home/pi/openocd.cfg -c \"program %s verify reset exit\"";
     int len = snprintf(NULL, 0, commandTemplate, filename);
 	char* commandStr = malloc(len + 1);
 	snprintf(commandStr, len + 1, commandTemplate, filename);
